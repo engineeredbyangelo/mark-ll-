@@ -10,6 +10,11 @@
 .svn/
 migrate_working_dir/
 
+# Flutter SDK (exclude from repo - will be installed in Codespace)
+flutter/
+flutter_*.tar.xz
+flutter_*.zip
+
 # IntelliJ related
 *.iml
 *.ipr
