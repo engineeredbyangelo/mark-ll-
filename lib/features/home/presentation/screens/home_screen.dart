@@ -1,11 +1,26 @@
+import 'dart:async';
+
+import 'package:architect_nexus/core/theme/app_colors.dart';
+import 'package:architect_nexus/core/theme/app_dimens.dart';
+import 'package:architect_nexus/core/theme/app_typography.dart';
+import 'package:architect_nexus/features/home/presentation/widgets/daily_byte_carousel.dart';
+import 'package:architect_nexus/features/home/presentation/widgets/glass_bottom_nav.dart';
+import 'package:architect_nexus/features/home/presentation/widgets/module_feed.dart';
+import 'package:architect_nexus/features/learning/presentation/controllers/learning_providers.dart';
+import 'package:architect_nexus/features/profile/presentation/controllers/user_progress_providers.dart';
+import 'package:architect_nexus/features/learning/presentation/controllers/learning_sync_controller.dart';
+import 'package:architect_nexus/features/home/presentation/widgets/sync_error_banner.dart';
+import 'package:architect_nexus/features/home/presentation/widgets/sync_status_chip.dart';
+import 'package:architect_nexus/features/spark/domain/spark_event.dart';
+import 'package:architect_nexus/features/spark/presentation/controllers/spark_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_dimens.dart';
-import '../../../../core/theme/app_typography.dart';
+import 'package:go_router/go_router.dart';
+
+enum HomeTab { home, explore, saved }
 
 /// Home Screen - The Stream
-/// Goal: Discovery over aggregation. High visuals, low text density.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -14,17 +29,22 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final ScrollController _scrollController = ScrollController();
+  late final ScrollController _scrollController;
   bool _showBottomNav = true;
+  HomeTab _activeTab = HomeTab.home;
+  Timer? _idleTimer;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
+    _scrollController = ScrollController()..addListener(_onScroll);
+    _resetIdleTimer();
   }
 
   void _onScroll() {
-    final isScrollingDown = _scrollController.position.userScrollDirection.name == 'reverse';
+    _resetIdleTimer();
+    final direction = _scrollController.position.userScrollDirection;
+    final isScrollingDown = direction == ScrollDirection.reverse;
     if (isScrollingDown && _showBottomNav) {
       setState(() => _showBottomNav = false);
     } else if (!isScrollingDown && !_showBottomNav) {
@@ -34,369 +54,150 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _idleTimer?.cancel();
     super.dispose();
   }
 
+  void _handleNavTap(int index) {
+    _resetIdleTimer();
+    if (index == 3) {
+      context.push('/profile');
+      return;
+    }
+    final targetTab = HomeTab.values[index];
+    if (_activeTab == targetTab) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      setState(() => _activeTab = targetTab);
+    }
+  }
+
+  void _resetIdleTimer() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(const Duration(seconds: 5), () {
+      ref.read(sparkControllerProvider.notifier).trigger(SparkEvent.scrollIdle);
+    });
+  }
+
+  SliverAppBar _buildAppBar(WidgetRef ref, LearningSyncState syncState) {
+    return SliverAppBar(
+      floating: true,
+      snap: true,
+      backgroundColor: AppColors.backgroundPrimary.withValues(alpha: 0.9),
+      title: Text(
+        'NEXUS',
+        style: AppTypography.h3.copyWith(color: AppColors.accentPrimary),
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppDimens.spaceSm),
+          child: SyncStatusChip(
+            state: syncState,
+            onTap: () => ref.read(learningSyncControllerProvider.notifier).sync(),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.person_outline),
+          onPressed: () => context.push('/profile'),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final homeModulesAsync = ref.watch(learningModulesProvider);
+    final exploreModulesAsync = ref.watch(exploreModulesProvider);
+    final progressAsync = ref.watch(moduleProgressControllerProvider);
+    final syncState = ref.watch(learningSyncControllerProvider);
+    final bookmarkedIds = progressAsync.value?.bookmarkedModuleIds ?? const <String>{};
+    final tabModulesAsync = switch (_activeTab) {
+      HomeTab.home => homeModulesAsync,
+      HomeTab.explore => exploreModulesAsync,
+      HomeTab.saved => homeModulesAsync.whenData(
+          (modules) => modules.where((module) => bookmarkedIds.contains(module.id)).toList(),
+        ),
+    };
+
+    final dailyTitle = switch (_activeTab) {
+      HomeTab.home => 'DAILY BYTE',
+      HomeTab.explore => 'EXPLORE BYTE',
+      HomeTab.saved => 'SAVED BYTE',
+    };
+    final carouselEmpty = switch (_activeTab) {
+      HomeTab.home => 'Fresh bytes are syncing... check back shortly.',
+      HomeTab.explore => 'Spark is mapping new missions. Try again in a beat.',
+      HomeTab.saved => 'Bookmark short reads to pin them here.',
+    };
+    final feedEmpty = switch (_activeTab) {
+      HomeTab.home => 'Spark is curating fresh content. Check back soon.',
+      HomeTab.explore => 'No emerging missions yet. Pull to refresh.',
+      HomeTab.saved => 'Save a module to see it here.',
+    };
+
     return Scaffold(
       body: Stack(
         children: [
-          // Main Content
-          CustomScrollView(
-            controller: _scrollController,
-            slivers: [
-              // App Bar
-              SliverAppBar(
-                floating: true,
-                snap: true,
-                backgroundColor: AppColors.backgroundPrimary.withOpacity(0.9),
-                title: Text(
-                  'NEXUS',
-                  style: AppTypography.h3.copyWith(
-                    color: AppColors.accentPrimary,
-                  ),
-                ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.person_outline),
-                    onPressed: () {
-                      // TODO: Navigate to profile
-                    },
-                  ),
-                ],
-              ),
-              
-              // Daily Byte Section
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppDimens.spaceMd),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'DAILY BYTE',
-                        style: AppTypography.h4.copyWith(
-                          color: AppColors.textHighlight,
-                        ),
+          RefreshIndicator(
+            color: AppColors.accentPrimary,
+            backgroundColor: AppColors.backgroundSecondary,
+            onRefresh: () => ref.read(learningSyncControllerProvider.notifier).sync(),
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              slivers: [
+                _buildAppBar(ref, syncState),
+                if (syncState.error != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppDimens.spaceMd),
+                      child: SyncErrorBanner(
+                        message: syncState.error.toString(),
+                        onRetry: () => ref.read(learningSyncControllerProvider.notifier).sync(),
                       ),
-                      const SizedBox(height: AppDimens.spaceSm),
-                      SizedBox(
-                        height: 120,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: 5,
-                          itemBuilder: (context, index) {
-                            return _DailyByteCard(index: index);
-                          },
-                        ),
-                      ),
-                    ],
+                    ),
+                  ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppDimens.spaceMd),
+                    child: DailyByteCarousel(
+                      modulesAsync: tabModulesAsync,
+                      title: dailyTitle,
+                      emptyMessage: carouselEmpty,
+                    ),
                   ),
                 ),
-              ),
-              
-              // Hero Cards Section
-              SliverPadding(
-                padding: const EdgeInsets.all(AppDimens.spaceMd),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      return _HeroCard(index: index);
-                    },
-                    childCount: 10,
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppDimens.spaceMd),
+                  sliver: ModuleFeed(
+                    modulesAsync: tabModulesAsync,
+                    emptyMessage: feedEmpty,
+                    bookmarkedModuleIds: bookmarkedIds,
                   ),
                 ),
-              ),
-            ],
+                const SliverPadding(padding: EdgeInsets.only(bottom: AppDimens.spaceXxl)),
+              ],
+            ),
           ),
-          
-          // Floating Glass Bottom Navigation
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
-            bottom: _showBottomNav ? 0 : -100,
+            bottom: _showBottomNav ? 0 : -AppDimens.bottomNavHeight,
             left: 0,
             right: 0,
-            child: _GlassBottomNav(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DailyByteCard extends StatelessWidget {
-  final int index;
-  
-  const _DailyByteCard({required this.index});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 280,
-      margin: const EdgeInsets.only(right: AppDimens.spaceMd),
-      decoration: BoxDecoration(
-        color: AppColors.glassOverlay,
-        borderRadius: BorderRadius.circular(AppDimens.radiusMd),
-        border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.2),
-        ),
-      ),
-      padding: const EdgeInsets.all(AppDimens.spaceMd),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimens.spaceSm,
-                  vertical: AppDimens.spaceXs,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.accentSecondary.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-                ),
-                child: Text(
-                  '< 60s',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.accentSecondary,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Icon(
-                Icons.bookmark_outline,
-                size: AppDimens.iconSm,
-                color: AppColors.textSecondary,
-              ),
-            ],
-          ),
-          Text(
-            'Quick Tip: Understanding async/await',
-            style: AppTypography.bodyMedium.copyWith(
-              fontWeight: FontWeight.w600,
+            child: GlassBottomNav(
+              activeIndex: _activeTab.index,
+              onItemSelected: _handleNavTap,
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
-    );
-  }
-}
-
-class _HeroCard extends StatelessWidget {
-  final int index;
-  
-  const _HeroCard({required this.index});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppDimens.spaceMd),
-      height: 300,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.accentPrimary.withOpacity(0.1),
-            AppColors.accentSecondary.withOpacity(0.1),
-          ],
-        ),
-        border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.3),
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppDimens.radiusLg),
-        child: Stack(
-          children: [
-            // Placeholder for thumbnail
-            Container(
-              color: AppColors.backgroundSecondary,
-              child: Center(
-                child: Icon(
-                  Icons.article,
-                  size: 64,
-                  color: AppColors.accentPrimary.withOpacity(0.3),
-                ),
-              ),
-            ),
-            
-            // Gradient Overlay
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(AppDimens.spaceMd),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      AppColors.backgroundPrimary.withOpacity(0.9),
-                    ],
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: AppDimens.spaceSm,
-                      children: [
-                        _Tag(label: 'Python'),
-                        _Tag(label: 'AI'),
-                      ],
-                    ),
-                    const SizedBox(height: AppDimens.spaceSm),
-                    Text(
-                      'Building Your First Neural Network',
-                      style: AppTypography.h3,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: AppDimens.spaceXs),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.timer_outlined,
-                          size: AppDimens.iconXs,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(width: AppDimens.spaceXs),
-                        Text(
-                          '12 min read',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(width: AppDimens.spaceMd),
-                        Icon(
-                          Icons.signal_cellular_alt,
-                          size: AppDimens.iconXs,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(width: AppDimens.spaceXs),
-                        Text(
-                          'Intermediate',
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Tag extends StatelessWidget {
-  final String label;
-  
-  const _Tag({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimens.spaceSm,
-        vertical: AppDimens.spaceXs,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.accentPrimary.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(AppDimens.radiusSm),
-        border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.5),
-        ),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.caption.copyWith(
-          color: AppColors.accentPrimary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _GlassBottomNav extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: AppDimens.bottomNavHeight,
-      margin: const EdgeInsets.all(AppDimens.spaceMd),
-      decoration: BoxDecoration(
-        color: AppColors.glassOverlay,
-        borderRadius: BorderRadius.circular(AppDimens.radiusXl),
-        border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.3),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.backgroundPrimary.withOpacity(0.5),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _NavItem(icon: Icons.home, label: 'Home', isActive: true),
-          _NavItem(icon: Icons.explore_outlined, label: 'Explore'),
-          _NavItem(icon: Icons.bookmark_outline, label: 'Saved'),
-          _NavItem(icon: Icons.person_outline, label: 'Profile'),
-        ],
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    this.isActive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          icon,
-          color: isActive ? AppColors.accentPrimary : AppColors.textSecondary,
-          size: AppDimens.iconMd,
-        ),
-        const SizedBox(height: AppDimens.spaceXs),
-        Text(
-          label,
-          style: AppTypography.caption.copyWith(
-            color: isActive ? AppColors.accentPrimary : AppColors.textSecondary,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ],
     );
   }
 }

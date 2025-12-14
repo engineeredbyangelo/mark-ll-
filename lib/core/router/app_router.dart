@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../features/auth/presentation/screens/login_screen.dart';
-import '../../features/home/presentation/screens/home_screen.dart';
-import '../../features/learning/presentation/screens/module_viewer_screen.dart';
-import '../../features/profile/presentation/screens/profile_screen.dart';
+import 'package:architect_nexus/features/auth/presentation/screens/login_screen.dart';
+import 'package:architect_nexus/features/home/presentation/screens/home_screen.dart';
+import 'package:architect_nexus/features/learning/presentation/screens/module_viewer_screen.dart';
+import 'package:architect_nexus/features/profile/presentation/screens/profile_screen.dart';
 
 /// App Router Provider
 final appRouterProvider = Provider<GoRouter>((ref) {

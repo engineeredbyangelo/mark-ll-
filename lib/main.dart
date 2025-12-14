@@ -1,22 +1,23 @@
+import 'package:architect_nexus/core/router/app_router.dart';
+import 'package:architect_nexus/core/theme/app_theme.dart';
+import 'package:architect_nexus/features/spark/presentation/widgets/spark_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'core/router/app_router.dart';
-import 'core/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Hive for offline-first architecture
   await Hive.initFlutter();
-  
+
   // Lock orientation to portrait
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  
+
   // Set system UI overlay style (Cyber-Fluent Dark Mode)
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -26,7 +27,7 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
-  
+
   runApp(
     const ProviderScope(
       child: ArchitectNexusApp(),
@@ -40,12 +41,20 @@ class ArchitectNexusApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
-    
+
     return MaterialApp.router(
       title: 'Architect Nexus',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       routerConfig: router,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            if (child != null) child,
+            const SparkOverlay(),
+          ],
+        );
+      },
     );
   }
 }

@@ -9,6 +9,7 @@ class LearningModule {
   final int totalSlides;
   final ModuleDifficulty difficulty;
   final DateTime publishedAt;
+  final bool isExploreCurated;
 
   const LearningModule({
     required this.id,
@@ -20,6 +21,7 @@ class LearningModule {
     required this.totalSlides,
     required this.difficulty,
     required this.publishedAt,
+    this.isExploreCurated = false,
   });
 }
 

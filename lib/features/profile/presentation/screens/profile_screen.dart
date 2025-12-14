@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_dimens.dart';
-import '../../../../core/theme/app_typography.dart';
+import 'package:architect_nexus/core/theme/app_colors.dart';
+import 'package:architect_nexus/core/theme/app_dimens.dart';
+import 'package:architect_nexus/core/theme/app_typography.dart';
 
 /// Profile Screen - The Cache
 /// Goal: A personal repository and skill tracker
@@ -26,8 +26,8 @@ class ProfileScreen extends ConsumerWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      AppColors.accentPrimary.withOpacity(0.2),
-                      AppColors.accentSecondary.withOpacity(0.2),
+                      AppColors.accentPrimary.withValues(alpha: 0.2),
+                      AppColors.accentSecondary.withValues(alpha: 0.2),
                     ],
                   ),
                 ),
@@ -47,7 +47,7 @@ class ProfileScreen extends ConsumerWidget {
                                 shape: BoxShape.circle,
                                 border: Border.all(
                                   color: AppColors.accentPrimary,
-                                  width: 3,
+                                  width: AppDimens.borderWidthThick,
                                 ),
                                 color: AppColors.backgroundSecondary,
                               ),
@@ -62,7 +62,7 @@ class ProfileScreen extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
+                                  const Text(
                                     'Developer',
                                     style: AppTypography.h3,
                                   ),
@@ -85,23 +85,23 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-          
+
           // Stats Row
-          SliverToBoxAdapter(
+          const SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(AppDimens.spaceMd),
+              padding: EdgeInsets.all(AppDimens.spaceMd),
               child: Row(
                 children: [
                   Expanded(child: _StatCard(label: 'Completed', value: '12')),
-                  const SizedBox(width: AppDimens.spaceSm),
+                  SizedBox(width: AppDimens.spaceSm),
                   Expanded(child: _StatCard(label: 'In Progress', value: '5')),
-                  const SizedBox(width: AppDimens.spaceSm),
+                  SizedBox(width: AppDimens.spaceSm),
                   Expanded(child: _StatCard(label: 'Saved', value: '24')),
                 ],
               ),
             ),
           ),
-          
+
           // Skill Constellation Section
           SliverToBoxAdapter(
             child: Padding(
@@ -121,7 +121,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-          
+
           // Resume Learning Section
           SliverToBoxAdapter(
             child: Padding(
@@ -146,7 +146,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-          
+
           // In Progress Modules
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: AppDimens.spaceMd),
@@ -159,7 +159,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-          
+
           // My Stacks Section
           SliverToBoxAdapter(
             child: Padding(
@@ -196,7 +196,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-          
+
           // Folder Grid
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: AppDimens.spaceMd),
@@ -208,14 +208,14 @@ class ProfileScreen extends ConsumerWidget {
                 childAspectRatio: 1.5,
               ),
               delegate: SliverChildListDelegate([
-                _FolderCard(label: 'Python Basics', count: 8),
-                _FolderCard(label: 'AI & ML', count: 12),
-                _FolderCard(label: 'Web Dev', count: 5),
-                _FolderCard(label: 'Project Ideas', count: 15),
+                const _FolderCard(label: 'Python Basics', count: 8),
+                const _FolderCard(label: 'AI & ML', count: 12),
+                const _FolderCard(label: 'Web Dev', count: 5),
+                const _FolderCard(label: 'Project Ideas', count: 15),
               ]),
             ),
           ),
-          
+
           const SliverToBoxAdapter(
             child: SizedBox(height: 100), // Bottom padding for nav
           ),
@@ -228,7 +228,7 @@ class ProfileScreen extends ConsumerWidget {
 class _StatCard extends StatelessWidget {
   final String label;
   final String value;
-  
+
   const _StatCard({required this.label, required this.value});
 
   @override
@@ -239,7 +239,7 @@ class _StatCard extends StatelessWidget {
         color: AppColors.glassOverlay,
         borderRadius: BorderRadius.circular(AppDimens.radiusMd),
         border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.2),
+          color: AppColors.accentPrimary.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -273,7 +273,7 @@ class _SkillConstellation extends StatelessWidget {
         color: AppColors.backgroundSecondary,
         borderRadius: BorderRadius.circular(AppDimens.radiusLg),
         border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.2),
+          color: AppColors.accentPrimary.withValues(alpha: 0.2),
         ),
       ),
       child: Center(
@@ -283,7 +283,7 @@ class _SkillConstellation extends StatelessWidget {
             Icon(
               Icons.auto_graph,
               size: 64,
-              color: AppColors.accentPrimary.withOpacity(0.3),
+              color: AppColors.accentPrimary.withValues(alpha: 0.3),
             ),
             const SizedBox(height: AppDimens.spaceSm),
             Text(
@@ -301,13 +301,13 @@ class _SkillConstellation extends StatelessWidget {
 
 class _ProgressModuleCard extends StatelessWidget {
   final int index;
-  
+
   const _ProgressModuleCard({required this.index});
 
   @override
   Widget build(BuildContext context) {
-    final progress = 0.65; // Mock progress
-    
+    const progress = 0.65; // Mock progress
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppDimens.spaceMd),
       padding: const EdgeInsets.all(AppDimens.spaceMd),
@@ -315,7 +315,7 @@ class _ProgressModuleCard extends StatelessWidget {
         color: AppColors.glassOverlay,
         borderRadius: BorderRadius.circular(AppDimens.radiusMd),
         border: Border.all(
-          color: AppColors.accentPrimary.withOpacity(0.2),
+          color: AppColors.accentPrimary.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -343,7 +343,7 @@ class _ProgressModuleCard extends StatelessWidget {
           const SizedBox(height: AppDimens.spaceSm),
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.signal_cellular_alt,
                 size: AppDimens.iconXs,
                 color: AppColors.textSecondary,
@@ -367,13 +367,13 @@ class _ProgressModuleCard extends StatelessWidget {
           const SizedBox(height: AppDimens.spaceSm),
           ClipRRect(
             borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-            child: LinearProgressIndicator(
+            child: const LinearProgressIndicator(
               value: progress,
               backgroundColor: AppColors.backgroundSecondary,
-              valueColor: const AlwaysStoppedAnimation<Color>(
+              valueColor: AlwaysStoppedAnimation<Color>(
                 AppColors.accentPrimary,
               ),
-              minHeight: 6,
+              minHeight: AppDimens.progressBarHeight,
             ),
           ),
         ],
@@ -385,7 +385,7 @@ class _ProgressModuleCard extends StatelessWidget {
 class _FolderCard extends StatelessWidget {
   final String label;
   final int count;
-  
+
   const _FolderCard({required this.label, required this.count});
 
   @override
@@ -396,14 +396,14 @@ class _FolderCard extends StatelessWidget {
         color: AppColors.glassOverlay,
         borderRadius: BorderRadius.circular(AppDimens.radiusMd),
         border: Border.all(
-          color: AppColors.accentSecondary.withOpacity(0.2),
+          color: AppColors.accentSecondary.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(
+          const Icon(
             Icons.folder_outlined,
             color: AppColors.accentSecondary,
             size: AppDimens.iconLg,

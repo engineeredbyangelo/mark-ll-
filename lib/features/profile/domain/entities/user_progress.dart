@@ -22,6 +22,7 @@ class ModuleProgress {
   final bool isCompleted;
   final DateTime? completedAt;
   final DateTime lastAccessedAt;
+  final bool isBookmarked;
 
   const ModuleProgress({
     required this.moduleId,
@@ -30,6 +31,7 @@ class ModuleProgress {
     required this.isCompleted,
     this.completedAt,
     required this.lastAccessedAt,
+    this.isBookmarked = false,
   });
 
   double get progressPercentage => (currentSlide / totalSlides) * 100;

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_dimens.dart';
-import '../../../../core/theme/app_typography.dart';
+import 'package:architect_nexus/core/theme/app_colors.dart';
+import 'package:architect_nexus/core/theme/app_dimens.dart';
+import 'package:architect_nexus/core/theme/app_typography.dart';
 
 /// Login Screen - The Portal
 /// Goal: Reduce friction. Entry must be instantaneous.
@@ -13,8 +13,7 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> 
-    with SingleTickerProviderStateMixin {
+class _LoginScreenState extends ConsumerState<LoginScreen> with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -26,14 +25,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
         curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
       ),
     );
-    
+
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
@@ -43,7 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         curve: const Interval(0.2, 0.8, curve: Curves.easeOut),
       ),
     );
-    
+
     _animationController.forward();
   }
 
@@ -86,11 +85,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: AppColors.accentPrimary,
-                            width: 3,
+                            width: AppDimens.borderWidthThick,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.accentPrimary.withOpacity(0.3),
+                              color: AppColors.accentPrimary.withValues(alpha: 0.3),
                               blurRadius: 20,
                               spreadRadius: 2,
                             ),
@@ -121,9 +120,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ],
                   ),
                 ),
-                
                 const SizedBox(height: AppDimens.spaceXxl),
-                
                 SlideTransition(
                   position: _slideAnimation,
                   child: FadeTransition(
@@ -142,9 +139,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             // TODO: Implement GitHub OAuth
                           },
                         ),
-                        
+
                         const SizedBox(height: AppDimens.spaceMd),
-                        
+
                         // Google Sign In
                         _AuthButton(
                           icon: Icons.g_mobiledata,
@@ -156,9 +153,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             // TODO: Implement Google OAuth
                           },
                         ),
-                        
+
                         const SizedBox(height: AppDimens.spaceMd),
-                        
+
                         // Email Sign In
                         _AuthButton(
                           icon: Icons.email_outlined,
@@ -169,9 +166,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             // TODO: Navigate to email sign in
                           },
                         ),
-                        
+
                         const SizedBox(height: AppDimens.spaceXl),
-                        
+
                         Text(
                           'By continuing, you agree to our Terms of Service',
                           style: AppTypography.caption.copyWith(
@@ -223,7 +220,10 @@ class _AuthButton extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimens.radiusMd),
           side: borderColor != null
-              ? BorderSide(color: borderColor!, width: 2)
+              ? BorderSide(
+                  color: borderColor!,
+                  width: AppDimens.borderWidthRegular,
+                )
               : BorderSide.none,
         ),
         elevation: 0,

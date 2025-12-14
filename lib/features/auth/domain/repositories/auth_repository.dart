@@ -1,4 +1,4 @@
-import '../entities/user.dart';
+import 'package:architect_nexus/features/auth/domain/entities/user.dart';
 
 /// Authentication Repository Interface (Domain Layer)
 /// Defines the contract for authentication operations

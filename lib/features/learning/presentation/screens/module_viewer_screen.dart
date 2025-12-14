@@ -1,15 +1,18 @@
+import 'package:architect_nexus/core/theme/app_colors.dart';
+import 'package:architect_nexus/core/theme/app_dimens.dart';
+import 'package:architect_nexus/core/theme/app_typography.dart';
+import 'package:architect_nexus/features/learning/domain/entities/learning_module.dart';
+import 'package:architect_nexus/features/learning/presentation/controllers/learning_providers.dart';
+import 'package:architect_nexus/features/profile/presentation/controllers/user_progress_providers.dart';
+import 'package:architect_nexus/features/spark/domain/spark_event.dart';
+import 'package:architect_nexus/features/spark/presentation/controllers/spark_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_dimens.dart';
-import '../../../../core/theme/app_typography.dart';
 
-/// Module Viewer Screen - Flow State View
-/// Goal: Replace scrolling articles with interactive slides
 class ModuleViewerScreen extends ConsumerStatefulWidget {
   final String moduleId;
-  
+
   const ModuleViewerScreen({
     super.key,
     required this.moduleId,
@@ -20,12 +23,19 @@ class ModuleViewerScreen extends ConsumerStatefulWidget {
 }
 
 class _ModuleViewerScreenState extends ConsumerState<ModuleViewerScreen> {
-  final PageController _pageController = PageController();
+  late final PageController _pageController;
   int _currentSlide = 0;
-  final int _totalSlides = 8; // Mock data
+  bool _initialProgressApplied = false;
+  bool _initialProgressRecorded = false;
 
-  void _nextSlide() {
-    if (_currentSlide < _totalSlides - 1) {
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  void _nextSlide(int totalSlides) {
+    if (_currentSlide < totalSlides - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOut,
@@ -44,20 +54,20 @@ class _ModuleViewerScreenState extends ConsumerState<ModuleViewerScreen> {
     }
   }
 
-  void _onSlideComplete() {
-    // Haptic reward when completing module
+  void _onSlideComplete(String moduleTitle) {
     HapticFeedback.mediumImpact();
-    
-    // TODO: Save progress to cache
+    ref.read(sparkControllerProvider.notifier).trigger(SparkEvent.moduleComplete);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             const Icon(Icons.check_circle, color: AppColors.success),
             const SizedBox(width: AppDimens.spaceSm),
-            Text(
-              'Module Complete! 🎉',
-              style: AppTypography.bodyMedium,
+            Flexible(
+              child: Text(
+                '$moduleTitle complete! 🎉',
+                style: AppTypography.bodyMedium,
+              ),
             ),
           ],
         ),
@@ -78,136 +88,237 @@ class _ModuleViewerScreenState extends ConsumerState<ModuleViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Slide Content
-          GestureDetector(
-            onTapUp: (details) {
-              final screenWidth = MediaQuery.of(context).size.width;
-              if (details.globalPosition.dx > screenWidth * 0.7) {
-                _nextSlide();
-              } else if (details.globalPosition.dx < screenWidth * 0.3) {
-                _previousSlide();
-              }
-            },
-            child: PageView.builder(
-              controller: _pageController,
-              onPageChanged: (index) {
-                setState(() => _currentSlide = index);
-                if (index == _totalSlides - 1) {
-                  _onSlideComplete();
-                }
-              },
-              itemCount: _totalSlides,
-              itemBuilder: (context, index) {
-                return _buildSlide(index);
-              },
-            ),
-          ),
-          
-          // Progress Bar
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Container(
-                height: 4,
-                margin: const EdgeInsets.symmetric(
-                  horizontal: AppDimens.spaceMd,
-                  vertical: AppDimens.spaceSm,
+    final detailAsync = ref.watch(learningModuleDetailProvider(widget.moduleId));
+    final progressAsync = ref.watch(moduleProgressControllerProvider);
+
+    return detailAsync.when(
+      data: (detail) {
+        final slides = detail.slides;
+        if (slides.isEmpty) {
+          return const Scaffold(
+            body: Center(child: Text('No slides available')),
+          );
+        }
+
+        final module = detail.module;
+        final totalSlides = slides.length;
+        if (_currentSlide >= totalSlides) {
+          _currentSlide = totalSlides - 1;
+        }
+        final progressState = progressAsync.value;
+        _applyStoredProgress(progressState, module.id, totalSlides);
+        _seedInitialProgress(progressState, module.id, totalSlides);
+
+        final isBookmarked = progressAsync.maybeWhen(
+          data: (state) => state.progressFor(module.id)?.isBookmarked ?? false,
+          orElse: () => false,
+        );
+
+        return Scaffold(
+          body: Stack(
+            children: [
+              GestureDetector(
+                onTapUp: (details) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  if (details.globalPosition.dx > screenWidth * 0.7) {
+                    _nextSlide(totalSlides);
+                  } else if (details.globalPosition.dx < screenWidth * 0.3) {
+                    _previousSlide();
+                  }
+                },
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) {
+                    setState(() => _currentSlide = index);
+                    _markProgress(module.id, index, totalSlides);
+                    if (index == totalSlides - 1) {
+                      _onSlideComplete(module.title);
+                    }
+                  },
+                  itemCount: totalSlides,
+                  itemBuilder: (context, index) {
+                    final slide = slides[index];
+                    return _buildSlide(module, slide);
+                  },
                 ),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundSecondary,
-                  borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-                ),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: (_currentSlide + 1) / _totalSlides,
+              ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
                   child: Container(
+                    height: AppDimens.progressBarHeight,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: AppDimens.spaceMd,
+                      vertical: AppDimens.spaceSm,
+                    ),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          AppColors.accentPrimary,
-                          AppColors.accentSecondary,
-                        ],
-                      ),
+                      color: AppColors.backgroundSecondary,
                       borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                    ),
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: (_currentSlide + 1) / totalSlides,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              AppColors.accentPrimary,
+                              AppColors.accentSecondary,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-          
-          // Top Bar
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(AppDimens.spaceMd),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.glassOverlay,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppDimens.spaceMd,
-                        vertical: AppDimens.spaceSm,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.glassOverlay,
-                        borderRadius: BorderRadius.circular(AppDimens.radiusFull),
-                      ),
-                      child: Text(
-                        '${_currentSlide + 1}/$_totalSlides',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.accentPrimary,
-                          fontWeight: FontWeight.w600,
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppDimens.spaceMd),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.glassOverlay,
+                          ),
                         ),
-                      ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppDimens.spaceMd,
+                            vertical: AppDimens.spaceSm,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.glassOverlay,
+                            borderRadius: BorderRadius.circular(AppDimens.radiusFull),
+                          ),
+                          child: Text(
+                            '${_currentSlide + 1}/$totalSlides',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.accentPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(isBookmarked ? Icons.bookmark : Icons.bookmark_outline),
+                          onPressed: () => _toggleBookmark(module.id),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.glassOverlay,
+                          ),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.bookmark_outline),
-                      onPressed: () {
-                        // TODO: Save to cache
-                      },
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.glassOverlay,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        );
+      },
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, _) => Scaffold(
+        body: Center(
+          child: Text('Unable to load module: $error'),
+        ),
       ),
     );
   }
 
-  Widget _buildSlide(int index) {
-    // Mock slide types
-    if (index == 0) {
-      return _TitleSlide();
-    } else if (index % 3 == 0) {
-      return _CodeSlide(slideNumber: index);
-    } else {
-      return _ContentSlide(slideNumber: index);
+  Widget _buildSlide(LearningModule module, ModuleSlide slide) {
+    if (slide.order == 0) {
+      return _TitleSlide(
+        module: module,
+        slideTitle: slide.title,
+        description: slide.content,
+      );
     }
+
+    switch (slide.type) {
+      case SlideType.code:
+        return _CodeSlide(slide: slide);
+      case SlideType.image:
+        return _ImageSlide(slide: slide);
+      case SlideType.interactive:
+      case SlideType.text:
+        return _ContentSlide(slide: slide);
+    }
+  }
+
+  void _markProgress(String moduleId, int slideIndex, int totalSlides) {
+    ref.read(moduleProgressControllerProvider.notifier).markSlide(
+          moduleId: moduleId,
+          slideIndex: slideIndex,
+          totalSlides: totalSlides,
+        );
+  }
+
+  void _toggleBookmark(String moduleId) {
+    ref.read(moduleProgressControllerProvider.notifier).toggleBookmark(moduleId);
+  }
+
+  void _applyStoredProgress(
+    ModuleProgressState? state,
+    String moduleId,
+    int totalSlides,
+  ) {
+    if (state == null || _initialProgressApplied || totalSlides <= 0) {
+      return;
+    }
+    final stored = state.progressFor(moduleId);
+    if (stored == null) {
+      return;
+    }
+    final target = stored.currentSlide.clamp(0, totalSlides - 1);
+    _initialProgressApplied = true;
+    _currentSlide = target;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(target);
+      }
+    });
+    _markProgress(moduleId, target, totalSlides);
+  }
+
+  void _seedInitialProgress(
+    ModuleProgressState? state,
+    String moduleId,
+    int totalSlides,
+  ) {
+    if (_initialProgressRecorded || totalSlides <= 0 || state == null) {
+      return;
+    }
+    final existing = state.progressFor(moduleId);
+    _initialProgressRecorded = true;
+    if (existing != null) {
+      return;
+    }
+    _markProgress(moduleId, 0, totalSlides);
   }
 }
 
 class _TitleSlide extends StatelessWidget {
+  const _TitleSlide({
+    required this.module,
+    required this.slideTitle,
+    required this.description,
+  });
+
+  final LearningModule module;
+  final String slideTitle;
+  final String description;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -216,8 +327,8 @@ class _TitleSlide extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.accentPrimary.withOpacity(0.2),
-            AppColors.accentSecondary.withOpacity(0.2),
+            AppColors.accentPrimary.withValues(alpha: 0.2),
+            AppColors.accentSecondary.withValues(alpha: 0.2),
           ],
         ),
       ),
@@ -232,11 +343,11 @@ class _TitleSlide extends StatelessWidget {
               vertical: AppDimens.spaceSm,
             ),
             decoration: BoxDecoration(
-              color: AppColors.accentSecondary.withOpacity(0.3),
+              color: AppColors.accentSecondary.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(AppDimens.radiusSm),
             ),
             child: Text(
-              'INTERMEDIATE',
+              module.difficulty.name.toUpperCase(),
               style: AppTypography.caption.copyWith(
                 color: AppColors.accentSecondary,
                 fontWeight: FontWeight.w700,
@@ -245,12 +356,12 @@ class _TitleSlide extends StatelessWidget {
           ),
           const SizedBox(height: AppDimens.spaceLg),
           Text(
-            'BUILDING YOUR FIRST\nNEURAL NETWORK',
+            slideTitle.toUpperCase(),
             style: AppTypography.h1.copyWith(fontSize: 36),
           ),
           const SizedBox(height: AppDimens.spaceMd),
           Text(
-            'A hands-on guide to understanding the fundamentals of deep learning',
+            description,
             style: AppTypography.bodyLarge.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -258,14 +369,14 @@ class _TitleSlide extends StatelessWidget {
           const SizedBox(height: AppDimens.spaceXl),
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.timer_outlined,
                 size: AppDimens.iconSm,
                 color: AppColors.textSecondary,
               ),
               const SizedBox(width: AppDimens.spaceXs),
               Text(
-                '12 min read',
+                '${module.estimatedMinutes} min read',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -279,62 +390,34 @@ class _TitleSlide extends StatelessWidget {
 }
 
 class _ContentSlide extends StatelessWidget {
-  final int slideNumber;
-  
-  const _ContentSlide({required this.slideNumber});
+  const _ContentSlide({required this.slide});
+
+  final ModuleSlide slide;
 
   @override
   Widget build(BuildContext context) {
+    final paragraphs = slide.content.split('\n\n');
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppDimens.spaceXl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 80), // Space for progress bar
+          const SizedBox(height: AppDimens.spaceXl),
           Text(
-            'Understanding Neural Networks',
+            slide.title,
             style: AppTypography.h2,
           ),
           const SizedBox(height: AppDimens.spaceLg),
-          Text(
-            'A neural network is a series of algorithms that endeavors to recognize underlying relationships in a set of data through a process that mimics the way the human brain operates.',
-            style: AppTypography.bodyLarge.copyWith(height: 1.8),
-          ),
-          const SizedBox(height: AppDimens.spaceLg),
-          Text(
-            'In this module, you\'ll learn:',
-            style: AppTypography.h4,
-          ),
-          const SizedBox(height: AppDimens.spaceMd),
-          ...[
-            'The basic structure of a neural network',
-            'How neurons process information',
-            'Activation functions and their importance',
-            'Training through backpropagation',
-          ].map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: AppDimens.spaceSm),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(top: 6),
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(
-                    color: AppColors.accentPrimary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: AppDimens.spaceMd),
-                Expanded(
-                  child: Text(
-                    item,
-                    style: AppTypography.bodyMedium.copyWith(height: 1.6),
-                  ),
-                ),
-              ],
+          ...paragraphs.map(
+            (paragraph) => Padding(
+              padding: const EdgeInsets.only(bottom: AppDimens.spaceSm),
+              child: Text(
+                paragraph,
+                style: AppTypography.bodyLarge.copyWith(height: 1.6),
+              ),
             ),
-          )),
+          ),
         ],
       ),
     );
@@ -342,39 +425,28 @@ class _ContentSlide extends StatelessWidget {
 }
 
 class _CodeSlide extends StatelessWidget {
-  final int slideNumber;
-  
-  const _CodeSlide({required this.slideNumber});
+  const _CodeSlide({required this.slide});
+
+  final ModuleSlide slide;
 
   @override
   Widget build(BuildContext context) {
-    const code = '''import numpy as np
-
-# Define a simple neural network
-class NeuralNetwork:
-    def __init__(self):
-        self.weights = np.random.rand(2, 1)
-    
-    def forward(self, X):
-        return self.sigmoid(np.dot(X, self.weights))
-    
-    def sigmoid(self, x):
-        return 1 / (1 + np.exp(-x))
-''';
+    final code = slide.codeSnippet ?? '';
+    final languageLabel = slide.codeLanguage?.toUpperCase() ?? 'CODE';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppDimens.spaceXl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 80),
+          const SizedBox(height: AppDimens.spaceXl),
           Text(
-            'Code Example',
+            slide.title,
             style: AppTypography.h3,
           ),
           const SizedBox(height: AppDimens.spaceMd),
           Text(
-            'Here\'s a basic implementation of a neural network in Python:',
+            slide.content,
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -386,7 +458,7 @@ class NeuralNetwork:
               color: AppColors.backgroundSecondary,
               borderRadius: BorderRadius.circular(AppDimens.radiusMd),
               border: Border.all(
-                color: AppColors.accentSecondary.withOpacity(0.3),
+                color: AppColors.accentSecondary.withValues(alpha: 0.3),
               ),
             ),
             child: Column(
@@ -401,20 +473,20 @@ class NeuralNetwork:
                         vertical: AppDimens.spaceXs,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.accentSecondary.withOpacity(0.2),
+                        color: AppColors.accentSecondary.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(AppDimens.radiusSm),
                       ),
                       child: Text(
-                        'Python',
+                        languageLabel,
                         style: AppTypography.caption.copyWith(
                           color: AppColors.accentSecondary,
                         ),
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.copy, size: 20),
+                      icon: const Icon(Icons.copy, size: AppDimens.iconSm),
                       onPressed: () {
-                        Clipboard.setData(const ClipboardData(text: code));
+                        Clipboard.setData(ClipboardData(text: code));
                         HapticFeedback.lightImpact();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
@@ -435,6 +507,69 @@ class NeuralNetwork:
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImageSlide extends StatelessWidget {
+  const _ImageSlide({required this.slide});
+
+  final ModuleSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppDimens.spaceXl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: AppDimens.spaceXl),
+          Text(
+            slide.title,
+            style: AppTypography.h3,
+          ),
+          const SizedBox(height: AppDimens.spaceSm),
+          if (slide.imageUrl != null)
+            Container(
+              height: 240,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+                border: Border.all(
+                  color: AppColors.accentPrimary.withValues(alpha: 0.3),
+                ),
+                image: DecorationImage(
+                  image: AssetImage(slide.imageUrl!),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            )
+          else
+            Container(
+              height: 240,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSecondary,
+                borderRadius: BorderRadius.circular(AppDimens.radiusLg),
+                border: Border.all(
+                  color: AppColors.accentPrimary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.image_outlined,
+                  color: AppColors.textSecondary,
+                  size: AppDimens.iconLg,
+                ),
+              ),
+            ),
+          const SizedBox(height: AppDimens.spaceLg),
+          Text(
+            slide.content,
+            style: AppTypography.bodyLarge,
           ),
         ],
       ),
